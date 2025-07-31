@@ -1,34 +1,75 @@
 // backend/src/index.ts
-import 'dotenv/config'; // ES module syntax for dotenv; ensures process.env is populated
-import express, { Request, Response } from 'express';
-import mongoose from 'mongoose';
+
+import express, { Request, Response, NextFunction } from 'express';
+import dotenv from 'dotenv';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import connectDB from './config/db'; // Your database connection function
+import userRoutes from './routes/userRoutes';
+import authRoutes from './routes/authRoutes';
+import studyGroupRoutes from './routes/studyGroupRoutes';
+import taskRoutes from './routes/taskRoutes';
+import { notFound, errorHandler } from './middleware/errorMiddleware'; // Custom error handling
 
-const app = express();
-// Parse PORT from environment variables. parseInt ensures it's a number, 10 for base 10.
-const PORT: number = parseInt(process.env.PORT || '5000', 10);
-// Get MongoDB URI from environment variables. Add a fallback string for development safety if .env isn't loaded.
-const MONGO_URI: string = process.env.MONGO_URI || 'mongodb://localhost:27017/studysync_db'; // <- IMPORTANT: Replace or ensure your .env has this!
-
-// Middleware: These functions execute for every incoming request
-app.use(cors()); // Enables Cross-Origin Resource Sharing for your frontend
-app.use(express.json()); // Parses incoming JSON requests and puts the parsed data in req.body
-
-// Basic route: A simple endpoint to confirm the server is running
-app.get('/', (req: Request, res: Response) => {
-    res.send('StudySync Backend API is running! (TypeScript)');
-});
+// Load environment variables from .env file
+dotenv.config();
 
 // Connect to MongoDB
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('MongoDB connected successfully'))
-    .catch((err: Error) => {
-        console.error('MongoDB connection error:', err);
-        // Optionally, exit the process if DB connection is critical for startup
-        // process.exit(1);
-    });
+connectDB();
 
-// Start the server: Listen for incoming requests on the specified port
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const app = express();
+
+// --- Middleware ---
+
+// Enable CORS for all origins (adjust for production)
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Allow requests from your frontend
+  credentials: true, // Allow cookies to be sent
+}));
+
+// Body parser for JSON requests
+app.use(express.json());
+
+// Cookie parser for reading cookies
+app.use(cookieParser());
+
+// --- Routes ---
+
+// Basic route for testing server status
+app.get('/', (req: Request, res: Response) => {
+  res.send('API is running...');
 });
+
+// User authentication routes (e.g., /api/auth/register, /api/auth/login)
+app.use('/api/auth', authRoutes);
+
+// User-related routes (e.g., /api/users/profile)
+app.use('/api/users', userRoutes);
+
+// Study Group routes (e.g., /api/groups, /api/groups/:id)
+app.use('/api/groups', studyGroupRoutes);
+
+// Task routes (e.g., /api/groups/:groupId/tasks, /api/groups/:groupId/tasks/:taskId)
+// Note: Task routes are mounted under /api/groups/:groupId/tasks in your taskRoutes.ts
+// So the base path here is just /api, and taskRoutes handles the rest.
+app.use('/api', taskRoutes);
+
+
+// --- Error Handling Middleware ---
+// These should be the last middlewares to catch all errors
+
+// 404 Not Found handler
+app.use(notFound);
+
+// Custom error handler
+app.use(errorHandler);
+
+// --- Server Listening ---
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+});
+
+export default app; // Export app for testing purposes
